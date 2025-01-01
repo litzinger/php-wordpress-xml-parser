@@ -1,10 +1,10 @@
 <?php
 
-namespace HJBDev\PHPWordpressXMLParser;
+namespace Litzinger\PHPWordpressXMLParser;
 
-use HJBDev\PHPWordpressXMLParser\Parsers\Regex;
-use HJBDev\PHPWordpressXMLParser\Parsers\SimpleXML;
-use HJBDev\PHPWordpressXMLParser\Parsers\XML;
+use Litzinger\PHPWordpressXMLParser\Parsers\Regex;
+use Litzinger\PHPWordpressXMLParser\Parsers\SimpleXML;
+use Litzinger\PHPWordpressXMLParser\Parsers\XML;
 
 class Parser {
 

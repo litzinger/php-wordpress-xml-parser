@@ -1,6 +1,6 @@
 <?php
 
-namespace HJBDev\PHPWordpressXMLParser\Parsers;
+namespace Litzinger\PHPWordpressXMLParser\Parsers;
 
 use Exception;
 
