@@ -4,8 +4,7 @@ namespace Litzinger\PHPWordpressXMLParser\Parsers;
 
 use DOMDocument;
 use Exception;
-use HTMLPurifier;
-use HTMLPurifier_Config;
+use SimpleXMLElement;
 
 class SimpleXML {
     private array $postCollection;
@@ -14,20 +13,15 @@ class SimpleXML {
     private array $customFields;
     private array $postTypes;
 
-    public function parse($file)
+    public function parse($file): array
     {
-        $authors    = array();
-        $categories = array();
-        $tags       = array();
-        $terms      = array();
-
-        $internal_errors = libxml_use_internal_errors( true );
-
-        $dom       = new DOMDocument();
+        $dom = new DOMDocument();
         $old_value = null;
+
         if ( function_exists( 'libxml_disable_entity_loader' ) && PHP_VERSION_ID < 80000 ) {
             $old_value = libxml_disable_entity_loader( true );
         }
+
         $success = $dom->loadXML( file_get_contents( $file ) );
         if ( ! is_null( $old_value ) ) {
             libxml_disable_entity_loader( $old_value );
@@ -37,8 +31,17 @@ class SimpleXML {
             throw new Exception( 'There was an error when reading this WXR file' );
         }
 
-        $xml = simplexml_import_dom( $dom );
-        unset( $dom );
+        $xml = simplexml_import_dom($dom);
+
+        return $this->parseString($xml);
+    }
+
+    public function parseString(SimpleXMLElement $xml): array
+    {
+        $authors    = array();
+        $categories = array();
+        $tags       = array();
+        $terms      = array();
 
         // halt if loading produces an error
         if ( ! $xml ) {
