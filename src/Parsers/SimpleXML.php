@@ -4,6 +4,8 @@ namespace Litzinger\PHPWordpressXMLParser\Parsers;
 
 use DOMDocument;
 use Exception;
+use HTMLPurifier;
+use HTMLPurifier_Config;
 
 class SimpleXML {
     private array $postCollection;
@@ -12,15 +14,12 @@ class SimpleXML {
     private array $customFields;
     private array $postTypes;
 
-
     public function parse($file)
     {
         $authors    = array();
-        $posts      = array();
         $categories = array();
         $tags       = array();
         $terms      = array();
-        $postTypes = [];
 
         $internal_errors = libxml_use_internal_errors( true );
 
@@ -202,7 +201,7 @@ class SimpleXML {
                     foreach ( $comment->commentmeta as $m ) {
                         $meta[] = array(
                             'key'   => (string) $m->meta_key,
-                            'value' => (string) $m->meta_value,
+                            'value' => $this->cleanContent((string) $m->meta_value, (string) $m->meta_key),
                         );
                     }
                 }
@@ -227,16 +226,31 @@ class SimpleXML {
             foreach ($wp->postmeta as $meta) {
                 $this->postMeta[(int) $wp->post_id][] = [
                     'key'   => (string) $meta->meta_key,
-                    'value' => (string) $meta->meta_value,
+                    'value' => $this->cleanContent((string) $meta->meta_value, (string) $meta->meta_key),
                 ];
             }
 
             if ((string) $wp->post_type === 'acf-field') {
                 $content = $item->children('http://purl.org/rss/1.0/modules/content/');
                 $excerpt = $item->children($namespaces['excerpt']);
+                $type = '';
 
-                $settings = unserialize((string) $content->encoded);
-                $type = $settings['type'];
+                try {
+                    $contentEncoded = (string) $content->encoded;
+
+                    if ($contentEncoded === '') {
+                        continue;
+                    }
+
+                    $settings = @unserialize($this->cleanContent($contentEncoded));
+                    $type = $settings['type'] ?? '';
+                } catch (\Exception $e) {
+                    $msg = $e->getMessage();
+                }
+
+                if (!$type) {
+                    continue;
+                }
 
                 $fieldId = (string) $wp->post_name;
 
@@ -247,7 +261,11 @@ class SimpleXML {
                     'post_id' => (int) $wp->post_id,
                 ];
 
-                $this->customFieldNames[] = (string) $excerpt->encoded;
+                $customFieldName = (string) $excerpt->encoded;
+
+                if ($customFieldName !== '') {
+                    $this->customFieldNames[] = $customFieldName;
+                }
             }
 
             $this->postCollection[$post['post_id']] = $post;
@@ -258,7 +276,7 @@ class SimpleXML {
 
             foreach ($allMeta as $meta) {
                 $key = (string) $meta['key'];
-                $val = (string) $meta['value'];
+                $val = $this->cleanContent($key, (string) $meta['value']);
 
                 $post['postmeta'][] = array(
                     'key'   => $key,
@@ -270,16 +288,13 @@ class SimpleXML {
                         substr($key, 0, 1) === '_' &&
                         substr($val, 0, 6) === 'field_'
                     ) {
-                        $cleanedKey = substr($key, 0, 1);
                         $fieldId = $val;
+                        $relatedPosts = $this->findRelatedPostMetaValueByKey((int) $post['post_id'], $fieldId);
 
-                        $relatedPost = current($this->findPostByCustomFieldName($fieldId));
-                        $f = $this->findRelatedPostMetaValueByKey((int) $post['post_id'], $fieldId);
-
-                        if ($f['parentName']) {
-                            $post['custom_fields'][$f['parentName']][] = $f['fieldValues'];
+                        if ($relatedPosts['parentName']) {
+                            $post['custom_fields'][$relatedPosts['parentName']][] = $relatedPosts['fieldValues'];
                         } else {
-                            $post['custom_fields'][$f['fieldName']] = $f['fieldValues'];
+                            $post['custom_fields'][$relatedPosts['fieldName']] = $relatedPosts['fieldValues'];
                         }
                     }
                 }
@@ -289,16 +304,16 @@ class SimpleXML {
 
         return array(
             'authors'       => $authors,
-            'post_types'    => array_unique($postTypes),
+            'post_types'    => array_values(array_unique($this->postTypes)),
             'posts'         => $this->postCollection,
-            //'categories'    => $categories,
-            //'tags'          => $tags,
-            //'terms'         => $terms,
-            //'base_url'      => $base_url,
-            //'base_blog_url' => $base_blog_url,
-            //'version'       => $wxr_version,
-            'custom_fields' => $this->customFields,
-            'custom_fields_names' => $this->customFieldNames,
+            'categories'    => $categories,
+            'tags'          => $tags,
+            'terms'         => $terms,
+            'base_url'      => $base_url,
+            'base_blog_url' => $base_blog_url,
+            'version'       => $wxr_version,
+            //'custom_fields' => $this->customFields,
+            //'custom_fields_names' => $this->customFieldNames,
         );
     }
 
@@ -363,7 +378,10 @@ class SimpleXML {
 
             $int = (int) $field['value'];
 
-            if (isset($this->postCollection[$int]) && $this->postCollection[$int]['post_type'] === 'attachment') {
+            if (
+                isset($this->postCollection[$int]) &&
+                $this->postCollection[$int]['post_type'] === 'attachment'
+            ) {
                 $field['value'] = $this->postCollection[$int]['attachment_url'];
             }
         }
@@ -382,6 +400,18 @@ class SimpleXML {
         return array_filter($this->customFields, function ($field) use ($currentField) {
             return $field['post_id'] === $currentField['parent'];
         });
+    }
+
+    private function cleanContent(string $content, string $key = ''): string
+    {
+        if ($key && $key === '_elementor_data') {
+            //$config = HTMLPurifier_Config::createDefault();
+            //$purifier = new HTMLPurifier($config);
+            //$content = $purifier->purify($content);
+            //$elementorData = json_decode($content, true);
+        }
+
+        return str_replace(["\n", "\t"], "", $content);
     }
 
 }
